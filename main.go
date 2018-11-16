@@ -21,9 +21,10 @@ var opt struct {
 	Username string `cli:"-U, --username" env:"VOOM_USERNAME"`
 	Password string `cli:"-P, --password" env:"VOOM_PASSWORD"`
 
-	Dump    struct{} `cli:"dump"`
-	List    struct{} `cli:"ls"`
-	Summary struct{} `cli:"sum, summary"`
+	Dump          struct{} `cli:"dump"`
+	List          struct{} `cli:"ls"`
+	Summary       struct{} `cli:"sum, summary"`
+	ReclaimMemory struct{} `cli:"reclaim, reclaim-memory"`
 }
 
 func bail(msg string, err error) {
@@ -78,6 +79,16 @@ func main() {
 			fmt.Printf("\n")
 			os.Exit(0)
 		}
+
+		if command == "reclaim-memory" {
+			fmt.Printf("USAGE: @G{voom} [options] @C{reclaim-memory}\n")
+			fmt.Printf("\n")
+			fmt.Printf("Reclaim idle memory from VMs - using temporary artificial memory limits\n")
+			fmt.Printf("\n")
+			printGlobalOptionsHelp()
+			fmt.Printf("\n")
+			os.Exit(0)
+		}
 	}
 
 	c, err := voom.Connect(opt.URL, opt.Username, opt.Password)
@@ -101,7 +112,7 @@ func main() {
 			sort.Strings(tags)
 			t.Row(vm, vm.ID+"\n"+strings.Join(tags, "")+"\n", pow, vm.IP, timeString(vm.Uptime),
 				fmt.Sprintf("CPU\n%d cores\n%dMHz used\n%dMHz demand", vm.CPUs, vm.CPUUsage, vm.CPUDemand),
-				fmt.Sprintf("RAM\n%d MB\n%d MB resv\n%d MB alloc", vm.MemoryUsed, vm.MemoryReserved, vm.MemoryAllocated),
+				fmt.Sprintf("RAM\n%d Host MB\n%d Guest MB\n%d MB resv\n%d MB alloc", vm.HostMemoryUsed, vm.GuestMemoryUsed, vm.MemoryReserved, vm.MemoryAllocated),
 				fmt.Sprintf("   DISK\n%7.1f GB\n%7.1f GB free\n%7.1f GB alloc", float64(vm.DiskUsed)/1073741824.0, float64(vm.DiskFree)/1073741824.0, float64(vm.DiskAllocated)/1073741824.0))
 		}
 		t.Output(os.Stdout)
@@ -145,12 +156,13 @@ func main() {
 			sum.Breakout(dir).Breakout(dep).Ingest(vm)
 		}
 
-		t := table.NewTable("", "cores", "  compute  ", "  memory allocated  ", "  memory used  ", "   disk allocated  ", "   disk used  ", "   disk free  ")
+		t := table.NewTable("", "cores", "  compute  ", "  memory allocated  ", "  host memory used  ", "  guest memory used  ", "   disk allocated  ", "   disk used  ", "   disk free  ")
 		t.Row(nil, "ALL",
 			fmt.Sprintf("% 5d", sum.Cores),
 			fmt.Sprintf("% 7.1f GHz", float64(sum.Compute)/1024.0),
 			fmt.Sprintf("% 7.1f GB", float64(sum.MemoryAllocated)/1024.0),
-			fmt.Sprintf("% 7.1f GB", float64(sum.MemoryUsed)/1024.0),
+			fmt.Sprintf("% 7.1f GB", float64(sum.HostMemoryUsed)/1024.0),
+			fmt.Sprintf("% 7.1f GB", float64(sum.GuestMemoryUsed)/1024.0),
 			fmt.Sprintf("% 7.1f GB", float64(sum.DiskAllocated)/1073741824.0),
 			fmt.Sprintf("% 7.1f GB", float64(sum.DiskUsed)/1073741824.0),
 			fmt.Sprintf("% 7.1f GB", float64(sum.DiskFree)/1073741824.0))
@@ -162,7 +174,8 @@ func main() {
 				fmt.Sprintf("% 5d", bosh.Cores),
 				fmt.Sprintf("% 7.1f GHz", float64(bosh.Compute)/1024.0),
 				fmt.Sprintf("% 7.1f GB", float64(bosh.MemoryAllocated)/1024.0),
-				fmt.Sprintf("% 7.1f GB", float64(bosh.MemoryUsed)/1024.0),
+				fmt.Sprintf("% 7.1f GB", float64(bosh.HostMemoryUsed)/1024.0),
+				fmt.Sprintf("% 7.1f GB", float64(bosh.GuestMemoryUsed)/1024.0),
 				fmt.Sprintf("% 7.1f GB", float64(bosh.DiskAllocated)/1073741824.0),
 				fmt.Sprintf("% 7.1f GB", float64(bosh.DiskUsed)/1073741824.0),
 				fmt.Sprintf("% 7.1f GB", float64(bosh.DiskFree)/1073741824.0))
@@ -173,7 +186,8 @@ func main() {
 					fmt.Sprintf("% 5d", deployment.Cores),
 					fmt.Sprintf("% 7.1f    ", float64(deployment.Compute)/1024.0),
 					fmt.Sprintf("% 7.1f   ", float64(deployment.MemoryAllocated)/1024.0),
-					fmt.Sprintf("% 7.1f   ", float64(deployment.MemoryUsed)/1024.0),
+					fmt.Sprintf("% 7.1f   ", float64(deployment.HostMemoryUsed)/1024.0),
+					fmt.Sprintf("% 7.1f   ", float64(deployment.GuestMemoryUsed)/1024.0),
 					fmt.Sprintf("% 7.1f   ", float64(deployment.DiskAllocated)/1073741824.0),
 					fmt.Sprintf("% 7.1f   ", float64(deployment.DiskUsed)/1073741824.0),
 					fmt.Sprintf("% 7.1f   ", float64(deployment.DiskFree)/1073741824.0))
@@ -181,5 +195,10 @@ func main() {
 			t.Row(nil, "---")
 		}
 		t.Output(os.Stdout)
+	}
+
+	if command == "reclaim" {
+		err := c.ReclaimMemory()
+		bail("Failed to reclaim idle memory", err)
 	}
 }

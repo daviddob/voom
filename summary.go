@@ -10,7 +10,8 @@ type Summary struct {
 	VMs             int
 	Cores           int
 	MemoryAllocated int
-	MemoryUsed      int
+	GuestMemoryUsed int
+	HostMemoryUsed  int
 	Compute         int
 	DiskAllocated   int
 	DiskUsed        int
@@ -30,7 +31,8 @@ func (s *Summary) Ingest(vm voom.VM) {
 	s.VMs = s.VMs + 1
 	s.Cores = s.Cores + int(vm.CPUs)
 	s.MemoryAllocated = s.MemoryAllocated + int(vm.MemoryAllocated)
-	s.MemoryUsed = s.MemoryUsed + int(vm.MemoryUsed)
+	s.GuestMemoryUsed = s.GuestMemoryUsed + int(vm.GuestMemoryUsed)
+	s.HostMemoryUsed = s.HostMemoryUsed + int(vm.HostMemoryUsed)
 	s.Compute = s.Compute + int(vm.CPUUsage)
 	s.DiskAllocated = s.DiskAllocated + int(vm.DiskAllocated)
 	s.DiskFree = s.DiskFree + int(vm.DiskFree)

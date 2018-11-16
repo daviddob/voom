@@ -8,7 +8,8 @@ type VM struct {
 	On              bool              `json:"on"`
 	MemoryAllocated int32             `json:"mem_allocated"`
 	MemoryReserved  int32             `json:"mem_reserved"`
-	MemoryUsed      int32             `json:"mem_used"`
+	GuestMemoryUsed int32             `json:"guest_mem_used"`
+	HostMemoryUsed  int32             `json:"host_mem_used"`
 	CPUUsage        int32             `json:"cpu_usage"`
 	CPUDemand       int32             `json:"cpu_demand"`
 	CPUs            int32             `json:"cpus"`

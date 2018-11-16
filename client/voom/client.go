@@ -2,10 +2,13 @@ package voom
 
 import (
 	"context"
+	"fmt"
 	"net/url"
 	"strings"
 
 	"github.com/vmware/govmomi"
+	"github.com/vmware/govmomi/find"
+	"github.com/vmware/govmomi/object"
 	"github.com/vmware/govmomi/view"
 	"github.com/vmware/govmomi/vim25"
 	"github.com/vmware/govmomi/vim25/mo"
@@ -74,7 +77,8 @@ func (c *Client) VMs() ([]VM, error) {
 			MemoryReserved:  vm.Summary.Config.MemoryReservation,
 			CPUUsage:        vm.Summary.QuickStats.OverallCpuUsage,
 			CPUDemand:       vm.Summary.QuickStats.OverallCpuDemand,
-			MemoryUsed:      vm.Summary.QuickStats.GuestMemoryUsage,
+			GuestMemoryUsed: vm.Summary.QuickStats.GuestMemoryUsage,
+			HostMemoryUsed:  vm.Summary.QuickStats.HostMemoryUsage,
 			CPUs:            vm.Summary.Config.NumCpu,
 			DiskAllocated:   vm.Summary.Storage.Committed + vm.Summary.Storage.Uncommitted,
 			DiskUsed:        vm.Summary.Storage.Committed,
@@ -93,5 +97,33 @@ func (c *Client) VMs() ([]VM, error) {
 	return l, nil
 }
 
-func main() {
+func (c *Client) ReclaimMemory() error {
+	finder := find.NewFinder(c.c.Client, true)
+	dc, err := finder.DefaultDatacenter(c.ctx)
+	if err != nil {
+		return err
+	}
+	finder.SetDatacenter(dc)
+
+	fmt.Printf("Finding vms in DC:%s\n", dc.Name())
+	var vms []*object.VirtualMachine
+	vms, err = finder.VirtualMachineList(c.ctx, "*")
+	if err != nil {
+		fmt.Println("Foo")
+		return err
+	}
+
+	for _, vm := range vms {
+		if strings.HasPrefix(vm.Name(), "sc-") {
+			continue
+		}
+		var mvm mo.VirtualMachine
+		err := vm.Properties(c.ctx, vm.Reference(), []string{"config", "summary"}, &mvm)
+		if err != nil {
+			return err
+		}
+
+		fmt.Printf("VM:%s Allocated:  Used: PercentIdle: Limit: %d\n", mvm.Summary.Config.Name, *mvm.Config.MemoryAllocation.Limit)
+	}
+	return nil
 }
