@@ -103,8 +103,8 @@ func (c *Client) ReclaimMemory() error {
 		return err
 	}
 
-	// mem.ctlmaxpercent 65 -> 95 (allow balloon driver to absorb most idle ram)
-	err = set_property_on_all_hosts(c.ctx, c.c, "Mem.CtlMaxPercent", 65)
+	// mem.ctlmaxpercent 65 -> 75 (allow balloon driver to absorb more idle ram)
+	err = set_property_on_all_hosts(c.ctx, c.c, "Mem.CtlMaxPercent", 75)
 	if err != nil {
 		return err
 	}
@@ -153,7 +153,6 @@ func (c *Client) ReclaimMemory() error {
 			rounds_since_update := 0
 			previous_idle_mem_percent := -1.0
 			for exceeds_threshold {
-				exceeds_threshold, idle_mem_limit, idle_mem_percent, idle_mem_threshold, err = idle_mem_threshold_info(c.ctx, vm)
 				if err != nil {
 					//Remove limit
 					return err
@@ -165,13 +164,14 @@ func (c *Client) ReclaimMemory() error {
 					rounds_since_update = 0
 				}
 				previous_idle_mem_percent = idle_mem_percent
-				if rounds_since_update == 10 {
+				if rounds_since_update == 20 {
 					fmt.Printf("VM %s failed to respond to ballooning limit\n", vm.Name())
 					break
 				}
-				time.Sleep(30 * time.Second)
+				time.Sleep(15 * time.Second)
+				exceeds_threshold, idle_mem_limit, idle_mem_percent, idle_mem_threshold, err = idle_mem_threshold_info(c.ctx, vm)
 			}
-
+			fmt.Printf("IdleMemPercent is now: %f for VM: %s\n", idle_mem_percent, vm.Name())
 			fmt.Printf("Removing temporary VM Limit: %d for VM: %s\n", idle_mem_limit, vm.Name())
 			//Remove temporary mem limit
 			err = set_mem_limit(c.ctx, vm, -1)

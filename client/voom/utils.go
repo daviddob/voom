@@ -55,7 +55,7 @@ func idle_mem_threshold_info(ctx context.Context, vm *object.VirtualMachine) (bo
 
 	idle_mem := mvm.Summary.QuickStats.HostMemoryUsage - mvm.Summary.QuickStats.GuestMemoryUsage
 	idle_mem_percent := float64(idle_mem) / float64(mvm.Summary.Config.MemorySizeMB)
-	idle_mem_threshold := 0.25
+	idle_mem_threshold := 0.35
 	idle_mem_limit := mvm.Summary.QuickStats.GuestMemoryUsage + int32(float64(mvm.Summary.QuickStats.HostMemoryUsage)*idle_mem_threshold)
 
 	return idle_mem_percent > idle_mem_threshold, idle_mem_limit, idle_mem_percent, idle_mem_threshold, nil
