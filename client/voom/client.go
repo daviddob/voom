@@ -5,10 +5,9 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/vmware/govmomi"
-	"github.com/vmware/govmomi/find"
-	"github.com/vmware/govmomi/object"
 	"github.com/vmware/govmomi/view"
 	"github.com/vmware/govmomi/vim25"
 	"github.com/vmware/govmomi/vim25/mo"
@@ -79,6 +78,7 @@ func (c *Client) VMs() ([]VM, error) {
 			CPUDemand:       vm.Summary.QuickStats.OverallCpuDemand,
 			GuestMemoryUsed: vm.Summary.QuickStats.GuestMemoryUsage,
 			HostMemoryUsed:  vm.Summary.QuickStats.HostMemoryUsage,
+			IdleMemory:      vm.Summary.QuickStats.HostMemoryUsage - vm.Summary.QuickStats.GuestMemoryUsage,
 			CPUs:            vm.Summary.Config.NumCpu,
 			DiskAllocated:   vm.Summary.Storage.Committed + vm.Summary.Storage.Uncommitted,
 			DiskUsed:        vm.Summary.Storage.Committed,
@@ -98,18 +98,14 @@ func (c *Client) VMs() ([]VM, error) {
 }
 
 func (c *Client) ReclaimMemory() error {
-	finder := find.NewFinder(c.c.Client, true)
-	dc, err := finder.DefaultDatacenter(c.ctx)
+	vms, err := get_all_vms(c.ctx, c.c)
 	if err != nil {
 		return err
 	}
-	finder.SetDatacenter(dc)
 
-	fmt.Printf("Finding vms in DC:%s\n", dc.Name())
-	var vms []*object.VirtualMachine
-	vms, err = finder.VirtualMachineList(c.ctx, "*")
+	// mem.ctlmaxpercent 65 -> 95 (allow balloon driver to absorb most idle ram)
+	err = set_property_on_all_hosts(c.ctx, c.c, "Mem.CtlMaxPercent", 65)
 	if err != nil {
-		fmt.Println("Foo")
 		return err
 	}
 
@@ -117,13 +113,101 @@ func (c *Client) ReclaimMemory() error {
 		if strings.HasPrefix(vm.Name(), "sc-") {
 			continue
 		}
-		var mvm mo.VirtualMachine
-		err := vm.Properties(c.ctx, vm.Reference(), []string{"config", "summary"}, &mvm)
+
+		// fmt.Printf("VM:%s Allocated: %d HostUsed: %d GuestUsed: %d GuestIdleMem: %d Balooned: %d PercentBalooned: %f HostIdlePercent: %f PercentIdle: %f Limit: %d ToolsVersion: %d\n",
+		// 	mvm.Summary.Config.Name,
+		// 	mvm.Summary.Config.MemorySizeMB,
+		// 	mvm.Summary.QuickStats.HostMemoryUsage,
+		// 	mvm.Summary.QuickStats.GuestMemoryUsage,
+		// 	idle_mem,
+		// 	mvm.Summary.QuickStats.BalloonedMemory,
+		// 	float64(mvm.Summary.QuickStats.BalloonedMemory)/float64(mvm.Summary.Config.MemorySizeMB),
+		// 	idle_mem_percent,
+		// 	float64(mvm.Summary.QuickStats.GuestMemoryUsage)/float64(mvm.Summary.QuickStats.HostMemoryUsage),
+		// 	*mvm.Config.MemoryAllocation.Limit,
+		// 	mvm.Config.Tools.ToolsVersion)
+
+		// fmt.Printf("VM:%s Allocated: %d GuestMem: %d GuestIdleMem: %d PercentBalooned: %f HostIdlePercent: %f Cleanup?: %t LimitThreshold: %d\n",
+		// 	mvm.Summary.Config.Name,
+		// 	mvm.Summary.Config.MemorySizeMB,
+		// 	mvm.Summary.QuickStats.GuestMemoryUsage,
+		// 	idle_mem,
+		// 	float64(mvm.Summary.QuickStats.BalloonedMemory)/float64(mvm.Summary.Config.MemorySizeMB),
+		// 	idle_mem_percent,
+		// 	idle_mem_percent > idle_mem_threshold,
+		// 	idle_mem_limit)
+
+		exceeds_threshold, idle_mem_limit, idle_mem_percent, idle_mem_threshold, err := idle_mem_threshold_info(c.ctx, vm)
 		if err != nil {
 			return err
 		}
 
-		fmt.Printf("VM:%s Allocated:  Used: PercentIdle: Limit: %d\n", mvm.Summary.Config.Name, *mvm.Config.MemoryAllocation.Limit)
+		if exceeds_threshold {
+			fmt.Printf("Setting temporary VM Limit: %d for VM: %s\n", idle_mem_limit, vm.Name())
+			//Set temporary mem limit
+			err = set_mem_limit(c.ctx, vm, idle_mem_limit)
+			if err != nil {
+				return err
+			}
+
+			rounds_since_update := 0
+			previous_idle_mem_percent := -1.0
+			for exceeds_threshold {
+				exceeds_threshold, idle_mem_limit, idle_mem_percent, idle_mem_threshold, err = idle_mem_threshold_info(c.ctx, vm)
+				if err != nil {
+					//Remove limit
+					return err
+				}
+				fmt.Printf("Waiting for IdleMemPercent: %f to drop below Threshold: %f for VM: %s\n", idle_mem_percent, idle_mem_threshold, vm.Name())
+				if previous_idle_mem_percent-0.05 <= idle_mem_percent {
+					rounds_since_update++
+				} else {
+					rounds_since_update = 0
+				}
+				previous_idle_mem_percent = idle_mem_percent
+				if rounds_since_update == 10 {
+					fmt.Printf("VM %s failed to respond to ballooning limit\n", vm.Name())
+					break
+				}
+				time.Sleep(30 * time.Second)
+			}
+
+			fmt.Printf("Removing temporary VM Limit: %d for VM: %s\n", idle_mem_limit, vm.Name())
+			//Remove temporary mem limit
+			err = set_mem_limit(c.ctx, vm, -1)
+			if err != nil {
+				return err
+			}
+		}
 	}
+
+	// mem.ctlmaxpercent 95 -> 0 (disable balloon driver to "free" guest mem
+	// and allow for expansion as needed)
+	fmt.Printf("Draining Ballooned Memory\n")
+	err = set_property_on_all_hosts(c.ctx, c.c, "Mem.CtlMaxPercent", 0)
+	if err != nil {
+		return err
+	}
+
+	balloon_drained := false
+	for !balloon_drained {
+		fmt.Printf("Checking VMs for Ballooned Memory\n")
+		balloon_drained = true
+		for _, vm := range vms {
+			if has_ballooned_memory(c.ctx, vm) {
+				fmt.Printf("VM %s still has Ballooned memory\n", vm.Name())
+				balloon_drained = false
+			}
+		}
+		time.Sleep(30 * time.Second)
+	}
+	// wait for MCTLSZ to be 0 on all vms (collapse balloon driver)
+
+	// mem.ctlmaxpercent 95 -> 65 (reset host defaults)
+	err = set_property_on_all_hosts(c.ctx, c.c, "Mem.CtlMaxPercent", 65)
+	if err != nil {
+		return err
+	}
+
 	return nil
 }

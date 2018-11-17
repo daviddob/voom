@@ -112,7 +112,7 @@ func main() {
 			sort.Strings(tags)
 			t.Row(vm, vm.ID+"\n"+strings.Join(tags, "")+"\n", pow, vm.IP, timeString(vm.Uptime),
 				fmt.Sprintf("CPU\n%d cores\n%dMHz used\n%dMHz demand", vm.CPUs, vm.CPUUsage, vm.CPUDemand),
-				fmt.Sprintf("RAM\n%d Host MB\n%d Guest MB\n%d MB resv\n%d MB alloc", vm.HostMemoryUsed, vm.GuestMemoryUsed, vm.MemoryReserved, vm.MemoryAllocated),
+				fmt.Sprintf("RAM\n%d Host MB\n%d Guest MB\n%d Idle MB\n%d MB resv\n%d MB alloc", vm.HostMemoryUsed, vm.GuestMemoryUsed, vm.IdleMemory, vm.MemoryReserved, vm.MemoryAllocated),
 				fmt.Sprintf("   DISK\n%7.1f GB\n%7.1f GB free\n%7.1f GB alloc", float64(vm.DiskUsed)/1073741824.0, float64(vm.DiskFree)/1073741824.0, float64(vm.DiskAllocated)/1073741824.0))
 		}
 		t.Output(os.Stdout)
@@ -156,11 +156,12 @@ func main() {
 			sum.Breakout(dir).Breakout(dep).Ingest(vm)
 		}
 
-		t := table.NewTable("", "cores", "  compute  ", "  memory allocated  ", "  host memory used  ", "  guest memory used  ", "   disk allocated  ", "   disk used  ", "   disk free  ")
+		t := table.NewTable("", "cores", "  compute  ", "  memory allocated  ", "  idle memory  ", "  host memory used  ", "  guest memory used  ", "   disk allocated  ", "   disk used  ", "   disk free  ")
 		t.Row(nil, "ALL",
 			fmt.Sprintf("% 5d", sum.Cores),
 			fmt.Sprintf("% 7.1f GHz", float64(sum.Compute)/1024.0),
 			fmt.Sprintf("% 7.1f GB", float64(sum.MemoryAllocated)/1024.0),
+			fmt.Sprintf("% 7.1f GB", float64(sum.IdleMemory)/1024.0),
 			fmt.Sprintf("% 7.1f GB", float64(sum.HostMemoryUsed)/1024.0),
 			fmt.Sprintf("% 7.1f GB", float64(sum.GuestMemoryUsed)/1024.0),
 			fmt.Sprintf("% 7.1f GB", float64(sum.DiskAllocated)/1073741824.0),
@@ -174,6 +175,7 @@ func main() {
 				fmt.Sprintf("% 5d", bosh.Cores),
 				fmt.Sprintf("% 7.1f GHz", float64(bosh.Compute)/1024.0),
 				fmt.Sprintf("% 7.1f GB", float64(bosh.MemoryAllocated)/1024.0),
+				fmt.Sprintf("% 7.1f GB", float64(bosh.IdleMemory)/1024.0),
 				fmt.Sprintf("% 7.1f GB", float64(bosh.HostMemoryUsed)/1024.0),
 				fmt.Sprintf("% 7.1f GB", float64(bosh.GuestMemoryUsed)/1024.0),
 				fmt.Sprintf("% 7.1f GB", float64(bosh.DiskAllocated)/1073741824.0),
@@ -186,6 +188,7 @@ func main() {
 					fmt.Sprintf("% 5d", deployment.Cores),
 					fmt.Sprintf("% 7.1f    ", float64(deployment.Compute)/1024.0),
 					fmt.Sprintf("% 7.1f   ", float64(deployment.MemoryAllocated)/1024.0),
+					fmt.Sprintf("% 7.1f   ", float64(deployment.IdleMemory)/1024.0),
 					fmt.Sprintf("% 7.1f   ", float64(deployment.HostMemoryUsed)/1024.0),
 					fmt.Sprintf("% 7.1f   ", float64(deployment.GuestMemoryUsed)/1024.0),
 					fmt.Sprintf("% 7.1f   ", float64(deployment.DiskAllocated)/1073741824.0),

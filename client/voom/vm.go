@@ -10,6 +10,7 @@ type VM struct {
 	MemoryReserved  int32             `json:"mem_reserved"`
 	GuestMemoryUsed int32             `json:"guest_mem_used"`
 	HostMemoryUsed  int32             `json:"host_mem_used"`
+	IdleMemory      int32             `json:"idle_mem"`
 	CPUUsage        int32             `json:"cpu_usage"`
 	CPUDemand       int32             `json:"cpu_demand"`
 	CPUs            int32             `json:"cpus"`
