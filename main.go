@@ -13,6 +13,8 @@ import (
 	"github.com/jhunt/voom/client/voom"
 )
 
+var Version = ""
+
 var opt struct {
 	Help    bool `cli:"-h, --help"`
 	Version bool `cli:"-v, --version"`
@@ -37,6 +39,15 @@ func main() {
 	env.Override(&opt)
 	command, args, err := cli.Parse(&opt)
 	bail("Failed to parse command-line flags", err)
+
+	if opt.Version {
+		if Version == "" || Version == "dev" {
+			fmt.Printf("voom (development)\n")
+		} else {
+			fmt.Printf("voom v%s\n", Version)
+		}
+		os.Exit(0)
+	}
 
 	if opt.Help {
 		if command == "" || len(args) > 0 {
