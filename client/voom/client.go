@@ -6,6 +6,8 @@ import (
 	"strings"
 
 	"github.com/vmware/govmomi"
+	"github.com/vmware/govmomi/find"
+	"github.com/vmware/govmomi/object"
 	"github.com/vmware/govmomi/view"
 	"github.com/vmware/govmomi/vim25"
 	"github.com/vmware/govmomi/vim25/mo"
@@ -64,6 +66,7 @@ func (c *Client) VMs() ([]VM, error) {
 		if strings.HasPrefix(vm.Summary.Config.Name, "sc-") {
 			continue
 		}
+
 		v := VM{
 			ID:              vm.Summary.Config.Name,
 			Uptime:          vm.Summary.QuickStats.UptimeSeconds,
@@ -79,6 +82,7 @@ func (c *Client) VMs() ([]VM, error) {
 			DiskAllocated:   vm.Summary.Storage.Committed + vm.Summary.Storage.Uncommitted,
 			DiskUsed:        vm.Summary.Storage.Committed,
 			DiskFree:        vm.Summary.Storage.Uncommitted,
+			VM:              vm,
 
 			Tags: make(map[string]string),
 		}
@@ -91,6 +95,15 @@ func (c *Client) VMs() ([]VM, error) {
 	}
 
 	return l, nil
+}
+
+func (c *Client) GetVMInventoryPath(vm mo.VirtualMachine) (string, error) {
+	finder := find.NewFinder(c.c.Client, true)
+	folder, err := finder.ObjectReference(c.ctx, *vm.Parent)
+	if err != nil {
+		return "", err
+	}
+	return folder.(*object.Folder).InventoryPath, nil
 }
 
 func main() {

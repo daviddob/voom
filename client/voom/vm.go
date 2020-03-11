@@ -1,5 +1,9 @@
 package voom
 
+import (
+	"github.com/vmware/govmomi/vim25/mo"
+)
+
 type VM struct {
 	ID              string            `json:"id"`
 	Uptime          int32             `json:"uptime"`
@@ -16,4 +20,5 @@ type VM struct {
 	DiskUsed        int64             `json:"disk_used"`
 	DiskFree        int64             `json:"disk_free"`
 	Tags            map[string]string `json:"tags"`
+	VM              mo.VirtualMachine `json:"vm_raw"`
 }

@@ -138,8 +138,11 @@ func main() {
 			}
 
 			if dir == "" {
-				fmt.Fprintf(os.Stderr, "vm %s has no director!\n", vm.ID)
-				continue
+				path, err := c.GetVMInventoryPath(vm.VM)
+				bail("Failed to get VM Inventory Path", err)
+
+				dir = path
+				dep = vm.ID
 			}
 
 			sum.Breakout(dir).Breakout(dep).Ingest(vm)
